@@ -1,0 +1,21 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "tipping_by_payment",
+  description: "Tipping by payment method. Headline DQ insight: cash tips are essentially never recorded."
+}
+
+SELECT
+  f.payment_type,
+  p.payment_method,
+  COUNT(*) AS trips,
+  ROUND(COUNT(*) / SUM(COUNT(*)) OVER () * 100, 1) AS pct_of_trips,
+  ROUND(AVG(f.tip_amount), 3)                       AS avg_tip_amount,
+  ROUND(SAFE_DIVIDE(SUM(f.tip_amount), SUM(f.fare_amount)) * 100, 2) AS avg_tip_pct_of_fare,
+  ROUND(AVG(f.fare_amount), 2)                      AS avg_fare,
+  ROUND(AVG(f.driver_revenue), 2)                   AS avg_driver_revenue,
+  ROUND(AVG(CAST(f.tip_amount > 0 AS INT64)) * 100, 1) AS pct_trips_with_tip
+FROM ${ref("fact_trip")} f
+LEFT JOIN ${ref("dim_payment_type")} p ON f.payment_type = p.payment_type
+GROUP BY f.payment_type, p.payment_method
+ORDER BY trips DESC

@@ -1,0 +1,15 @@
+# Dataform project config (Dataform Core 3.x).
+# defaultProject / defaultLocation are OVERRIDDEN at compile time by the Cloud
+# Workflow (codeCompilationConfig.defaultDatabase / defaultLocation) and by the
+# Terraform repository's workspace_compilation_overrides, so the value here is
+# only a placeholder for local `dataform compile`.
+defaultProject: your-gcp-project-id
+defaultLocation: us-central1
+defaultDataset: taxi_silver
+defaultAssertionDataset: taxi_silver
+dataformCoreVersion: 3.0.0
+
+# target_month is injected per-run by the orchestrator (YYYY-MM). Empty => the
+# transforms process all available data (used for the initial full build).
+vars:
+  target_month: ""

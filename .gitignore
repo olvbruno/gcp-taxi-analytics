@@ -1,0 +1,42 @@
+# Terraform
+terraform/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+# NOTE: .terraform.lock.hcl is intentionally COMMITTED (pins provider versions
+# for reproducible init). Do not add it here.
+crash.log
+crash.*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Dataform
+dataform/.df-credentials.json
+dataform/node_modules/
+
+# GCP credentials — never commit
+*-key.json
+*-sa.json
+application_default_credentials.json
+gha-creds-*.json
+
+# Local data / scratch
+*.parquet
+*.csv
+!dataform/**/*.csv
+data/
+tmp/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

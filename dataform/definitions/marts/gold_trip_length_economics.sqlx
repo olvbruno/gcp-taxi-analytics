@@ -1,0 +1,43 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "trip_length_economics",
+  description: "Short vs long trips: which distance band pays best PER HOUR and per mile. Many short hops can beat a few long hauls."
+}
+
+WITH banded AS (
+  SELECT
+    CASE
+      WHEN trip_distance <= 1  THEN '0-1 mi'
+      WHEN trip_distance <= 2  THEN '1-2 mi'
+      WHEN trip_distance <= 3  THEN '2-3 mi'
+      WHEN trip_distance <= 5  THEN '3-5 mi'
+      WHEN trip_distance <= 10 THEN '5-10 mi'
+      WHEN trip_distance <= 20 THEN '10-20 mi'
+      ELSE '20+ mi'
+    END AS distance_band,
+    CASE
+      WHEN trip_distance <= 1  THEN 1
+      WHEN trip_distance <= 2  THEN 2
+      WHEN trip_distance <= 3  THEN 3
+      WHEN trip_distance <= 5  THEN 4
+      WHEN trip_distance <= 10 THEN 5
+      WHEN trip_distance <= 20 THEN 6
+      ELSE 7
+    END AS band_order,
+    *
+  FROM ${ref("fact_trip")}
+  WHERE trip_distance > 0
+)
+SELECT
+  distance_band,
+  COUNT(*) AS trips,
+  ROUND(COUNT(*) / SUM(COUNT(*)) OVER () * 100, 1)               AS pct_of_trips,
+  ROUND(APPROX_QUANTILES(driver_revenue, 100)[OFFSET(50)], 2)    AS median_driver_revenue,
+  ROUND(APPROX_QUANTILES(earnings_per_hour, 100)[OFFSET(50)], 2) AS median_earnings_per_hour,
+  ROUND(APPROX_QUANTILES(trip_minutes, 100)[OFFSET(50)], 1)      AS median_trip_minutes,
+  ROUND(APPROX_QUANTILES(SAFE_DIVIDE(driver_revenue, trip_distance), 100)[OFFSET(50)], 2) AS median_dollars_per_mile,
+  ROUND(APPROX_QUANTILES(SAFE_DIVIDE(driver_revenue, trip_minutes), 100)[OFFSET(50)], 2)  AS median_dollars_per_minute
+FROM banded
+GROUP BY distance_band, band_order
+ORDER BY band_order

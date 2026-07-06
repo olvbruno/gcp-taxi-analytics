@@ -1,0 +1,64 @@
+config {
+  type: "incremental",
+  schema: "taxi_gold",
+  name: "fact_trip",
+  description: "Materialized fact at ride grain: FK keys to all dims + measures. The star's center; BI plugs in here.",
+  uniqueKey: ["trip_sk"],
+  bigquery: {
+    partitionBy: "pickup_date",
+    clusterBy: ["pu_location_id", "payment_type"],
+    updatePartitionFilter: constants.updatePartitionFilter()
+  }
+}
+
+-- Integration point: stg_trips (clean facts) joined to dim_zone to resolve
+-- airport flags. Descriptive attributes stay in the dims (join by the FK keys).
+SELECT
+  t.trip_sk,
+
+  -- degenerate + date
+  t.pickup_datetime,
+  t.dropoff_datetime,
+  t.pickup_date,                              -- FK -> dim_date.date_key
+  t.pickup_hour,
+  t.pickup_dow,
+  t.pickup_dayname,
+  t.is_weekend,
+
+  -- foreign keys to dimensions
+  t.pu_location_id,                           -- FK -> dim_zone.location_id
+  t.do_location_id,                           -- FK -> dim_zone.location_id
+  t.vendor_id,                                -- FK -> dim_vendor
+  t.rate_code_id,                             -- FK -> dim_rate_code
+  t.payment_type,                             -- FK -> dim_payment_type
+
+  -- airport flags resolved from the zone dimension
+  puz.is_airport   AS is_airport_pickup,
+  doz.is_airport   AS is_airport_dropoff,
+  COALESCE(puz.airport_name, doz.airport_name) AS airport_name,
+  t.is_card,
+  t.is_congestion_zone,
+
+  -- measures
+  t.passenger_count,
+  t.trip_distance,
+  t.trip_minutes,
+  t.mph,
+  t.fare_amount,
+  t.extra,
+  t.mta_tax,
+  t.tip_amount,
+  t.tolls_amount,
+  t.improvement_surcharge,
+  t.congestion_surcharge,
+  t.airport_fee,
+  t.total_amount,
+  t.driver_revenue,
+  t.earnings_per_hour,
+  t.tip_pct,
+
+  t._source_month
+FROM ${ref("stg_trips")} t
+LEFT JOIN ${ref("dim_zone")} puz ON t.pu_location_id = puz.location_id
+LEFT JOIN ${ref("dim_zone")} doz ON t.do_location_id = doz.location_id
+${when(incremental(), `WHERE ${constants.sourceMonthFilter()}`)}

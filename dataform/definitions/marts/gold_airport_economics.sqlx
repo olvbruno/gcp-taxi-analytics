@@ -1,0 +1,31 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "airport_economics",
+  description: "Airport pickups vs the rest of the city. Airport runs pay well per trip; the long fare + likely empty return changes the per-hour math."
+}
+
+WITH seg AS (
+  SELECT
+    CASE pu_location_id
+      WHEN 132 THEN 'JFK pickup'
+      WHEN 138 THEN 'LaGuardia pickup'
+      WHEN 1   THEN 'Newark pickup'
+      ELSE 'Non-airport pickup'
+    END AS segment,
+    *
+  FROM ${ref("fact_trip")}
+)
+SELECT
+  segment,
+  COUNT(*) AS trips,
+  ROUND(AVG(driver_revenue), 2)                                  AS avg_driver_revenue,
+  ROUND(APPROX_QUANTILES(driver_revenue, 100)[OFFSET(50)], 2)    AS median_driver_revenue,
+  ROUND(APPROX_QUANTILES(earnings_per_hour, 100)[OFFSET(50)], 2) AS median_earnings_per_hour,
+  ROUND(APPROX_QUANTILES(trip_minutes, 100)[OFFSET(50)], 1)      AS median_trip_minutes,
+  ROUND(APPROX_QUANTILES(trip_distance, 100)[OFFSET(50)], 2)     AS median_trip_miles,
+  -- Pooled card tip rate (robust to tiny-fare outliers; see top_tip_zones).
+  ROUND(SAFE_DIVIDE(SUM(IF(is_card, tip_amount, 0)), SUM(IF(is_card, fare_amount, 0))) * 100, 1) AS avg_card_tip_pct
+FROM seg
+GROUP BY segment
+ORDER BY median_driver_revenue DESC

@@ -1,0 +1,120 @@
+config {
+  type: "incremental",
+  schema: "taxi_silver",
+  name: "stg_trips",
+  description: "Silver: one row per VALID ride — typed, cleaned, self-derived. NO cross-table joins (zone attributes are attached in gold.fact_trip). Keeps zone/code FKs.",
+  uniqueKey: ["trip_sk"],
+  bigquery: {
+    partitionBy: "pickup_date",
+    clusterBy: ["pu_location_id", "payment_type"],
+    updatePartitionFilter: constants.updatePartitionFilter()
+  },
+  assertions: {
+    uniqueKey: ["trip_sk"],
+    rowConditions: [
+      "trip_sk IS NOT NULL",
+      "pickup_date IS NOT NULL",
+      "pu_location_id IS NOT NULL",
+      "driver_revenue IS NOT NULL",
+      "trip_minutes >= 1 AND trip_minutes <= 720",
+      "fare_amount >= 0",
+      "driver_revenue >= 0"
+    ]
+  }
+}
+
+-- TIME: TLC timestamps are naive NYC wall-clock; we do NOT timezone-convert, so
+-- EXTRACT(HOUR ...) is the local hour a driver experiences.
+
+WITH src AS (
+  SELECT *
+  FROM ${ref("yellow_trips")}
+  WHERE ${constants.sourceMonthFilter()}
+  ${when(incremental(),
+    `AND _loaded_at > (SELECT COALESCE(MAX(_bronze_loaded_at), TIMESTAMP '1970-01-01') FROM ${self()})`
+  )}
+),
+
+typed AS (
+  SELECT
+    FARM_FINGERPRINT(CONCAT(
+      IFNULL(CAST(pickup_datetime  AS STRING), ''), '|',
+      IFNULL(CAST(dropoff_datetime AS STRING), ''), '|',
+      IFNULL(CAST(pu_location_id AS STRING), ''), '|',
+      IFNULL(CAST(do_location_id AS STRING), ''), '|',
+      IFNULL(CAST(fare_amount  AS STRING), ''), '|',
+      IFNULL(CAST(total_amount AS STRING), ''), '|',
+      IFNULL(CAST(vendor_id AS STRING), '')
+    )) AS trip_fp,
+    DATETIME(pickup_datetime)  AS pickup_dt,
+    DATETIME(dropoff_datetime) AS dropoff_dt,
+    vendor_id,
+    SAFE_CAST(rate_code_id AS INT64) AS rate_code_id,
+    payment_type,
+    pu_location_id,
+    do_location_id,
+    SAFE_CAST(passenger_count AS INT64) AS passenger_count,
+    store_and_fwd_flag,
+    trip_distance,
+    fare_amount, extra, mta_tax, tip_amount, tolls_amount, improvement_surcharge,
+    IFNULL(congestion_surcharge, 0) AS congestion_surcharge,
+    IFNULL(airport_fee, 0)          AS airport_fee,
+    total_amount,
+    _source_month,
+    _loaded_at AS _bronze_loaded_at
+  FROM src
+),
+
+derived AS (
+  SELECT
+    *,
+    DATE(pickup_dt) AS pickup_date,
+    TIMESTAMP_DIFF(dropoff_dt, pickup_dt, SECOND) / 60.0 AS trip_minutes
+  FROM typed
+),
+
+cleaned AS (
+  SELECT
+    trip_fp,
+    pickup_dt  AS pickup_datetime,
+    dropoff_dt AS dropoff_datetime,
+    pickup_date,
+    EXTRACT(HOUR FROM pickup_dt)      AS pickup_hour,
+    EXTRACT(DAYOFWEEK FROM pickup_dt) AS pickup_dow,          -- 1=Sun .. 7=Sat
+    FORMAT_DATE('%A', pickup_date)    AS pickup_dayname,
+    EXTRACT(DAYOFWEEK FROM pickup_dt) IN (1, 7) AS is_weekend,
+    vendor_id, rate_code_id, payment_type,
+    payment_type = 1 AS is_card,
+    pu_location_id, do_location_id,
+    passenger_count, store_and_fwd_flag,
+    trip_distance, trip_minutes,
+    SAFE_DIVIDE(trip_distance, trip_minutes / 60.0) AS mph,
+    fare_amount, extra, mta_tax, tip_amount, tolls_amount, improvement_surcharge,
+    congestion_surcharge, airport_fee, total_amount,
+    -- Money the DRIVER keeps: metered fare + tip (taxes/tolls/surcharges pass through).
+    fare_amount + tip_amount AS driver_revenue,
+    SAFE_DIVIDE(fare_amount + tip_amount, trip_minutes / 60.0) AS earnings_per_hour,
+    SAFE_DIVIDE(tip_amount, NULLIF(fare_amount, 0)) AS tip_pct,
+    congestion_surcharge > 0 AS is_congestion_zone,
+    _source_month, _bronze_loaded_at,
+    CURRENT_TIMESTAMP() AS _silver_loaded_at
+  FROM derived
+  WHERE pickup_dt IS NOT NULL
+    AND dropoff_dt > pickup_dt
+    AND trip_minutes >= 1                    -- drop sub-minute meter errors (e.g. spurious Newark pickups)
+    AND trip_minutes <= 720                  -- 12h cap
+    AND fare_amount >= 0
+    AND total_amount >= 0
+    AND trip_distance >= 0
+    AND pu_location_id IS NOT NULL
+    AND pickup_date >= _source_month         -- drop stray out-of-month rows (files go back to 2008)
+    AND pickup_date <  DATE_ADD(_source_month, INTERVAL 1 MONTH)
+)
+
+-- Disambiguate rare identical-trip fingerprint collisions so trip_sk is a TRUE
+-- unique key for the incremental MERGE (two identical trips -> _1, _2).
+SELECT
+  CONCAT(CAST(trip_fp AS STRING), '_',
+         CAST(ROW_NUMBER() OVER (PARTITION BY trip_fp) AS STRING)) AS trip_sk,
+  * EXCEPT (trip_fp)
+FROM cleaned

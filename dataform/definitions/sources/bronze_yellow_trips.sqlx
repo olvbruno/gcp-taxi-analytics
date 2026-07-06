@@ -1,0 +1,6 @@
+config {
+  type: "declaration",
+  schema: "taxi_bronze",
+  name: "yellow_trips",
+  description: "Bronze: raw yellow-taxi rides loaded verbatim per monthly file by the ingest job.",
+}

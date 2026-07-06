@@ -1,0 +1,16 @@
+config {
+  type: "table",
+  schema: "taxi_silver",
+  name: "stg_zone",
+  description: "Silver: the LATEST cleaned zone snapshot (typed), from the versioned bronze zone_lookup."
+}
+
+-- The bronze table keeps every version; silver conforms to the current one.
+SELECT
+  location_id,
+  borough,
+  zone,
+  service_zone,
+  location_id IN ${constants.AIRPORT_IDS} AS is_airport
+FROM ${ref("zone_lookup")}
+WHERE _loaded_at = (SELECT MAX(_loaded_at) FROM ${ref("zone_lookup")})

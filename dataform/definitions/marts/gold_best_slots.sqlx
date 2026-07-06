@@ -1,0 +1,31 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "best_slots",
+  description: "Driver playbook: highest expected $/occupied-hour pickup zone x hour slots among high-demand cells."
+}
+
+WITH slot AS (
+  SELECT
+    f.pu_location_id,
+    z.zone    AS pu_zone,
+    z.borough AS pu_borough,
+    f.pickup_hour,
+    COUNT(*) AS trips,
+    APPROX_QUANTILES(f.earnings_per_hour, 100)[OFFSET(50)] AS med_eph,
+    APPROX_QUANTILES(f.driver_revenue, 100)[OFFSET(50)]    AS med_rev,
+    APPROX_QUANTILES(f.trip_minutes, 100)[OFFSET(50)]      AS med_minutes
+  FROM ${ref("fact_trip")} f
+  LEFT JOIN ${ref("dim_zone")} z ON f.pu_location_id = z.location_id
+  WHERE z.borough IS NOT NULL AND z.borough NOT IN ('Unknown', 'N/A')
+  GROUP BY f.pu_location_id, pu_zone, pu_borough, f.pickup_hour
+  HAVING trips >= 100
+)
+SELECT
+  RANK() OVER (ORDER BY med_eph DESC) AS eph_rank,
+  pu_zone, pu_borough, pickup_hour, trips,
+  ROUND(med_eph, 2)     AS median_earnings_per_hour,
+  ROUND(med_rev, 2)     AS median_driver_revenue,
+  ROUND(med_minutes, 1) AS median_trip_minutes
+FROM slot
+ORDER BY median_earnings_per_hour DESC

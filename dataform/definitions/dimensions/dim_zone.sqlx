@@ -1,0 +1,20 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "dim_zone",
+  description: "Zone dimension: LocationID -> borough / zone / service_zone, with airport flags.",
+}
+
+SELECT
+  location_id,
+  borough,
+  zone,
+  service_zone,
+  is_airport,
+  CASE location_id
+    WHEN 132 THEN 'JFK'
+    WHEN 138 THEN 'LaGuardia'
+    WHEN 1   THEN 'Newark'
+    ELSE NULL
+  END AS airport_name
+FROM ${ref("stg_zone")}

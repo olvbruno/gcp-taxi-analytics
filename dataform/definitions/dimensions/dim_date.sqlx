@@ -1,0 +1,24 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "dim_date",
+  description: "Date dimension covering the loaded trip date range (one row per calendar day).",
+}
+
+-- Generated across the min..max pickup_date present in the fact source.
+SELECT
+  date_key,
+  EXTRACT(YEAR    FROM date_key) AS year,
+  EXTRACT(QUARTER FROM date_key) AS quarter,
+  EXTRACT(MONTH   FROM date_key) AS month,
+  FORMAT_DATE('%B', date_key)    AS month_name,
+  EXTRACT(DAY     FROM date_key) AS day_of_month,
+  EXTRACT(DAYOFWEEK FROM date_key) AS day_of_week,     -- 1=Sun .. 7=Sat
+  FORMAT_DATE('%A', date_key)    AS day_name,
+  EXTRACT(DAYOFWEEK FROM date_key) IN (1, 7) AS is_weekend
+FROM UNNEST(
+  GENERATE_DATE_ARRAY(
+    (SELECT MIN(pickup_date) FROM ${ref("stg_trips")}),
+    (SELECT MAX(pickup_date) FROM ${ref("stg_trips")})
+  )
+) AS date_key

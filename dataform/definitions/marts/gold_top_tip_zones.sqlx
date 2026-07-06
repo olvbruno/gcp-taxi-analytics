@@ -1,0 +1,26 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "top_tip_zones",
+  description: "Best-tipping pickup zones, CARD TRIPS ONLY (cash tips are unrecorded, so including cash would bias this)."
+}
+
+SELECT
+  f.pu_location_id,
+  z.zone    AS pu_zone,
+  z.borough AS pu_borough,
+  COUNT(*) AS card_trips,
+  -- Pooled SUM(tip)/SUM(fare), NOT AVG(per-trip tip/fare): the per-trip ratio
+  -- explodes on tiny fares (a $0.01 fare with a normal tip = a 10000% ratio),
+  -- which wrecks a plain AVG. Pooled is the robust "tip rate" for the zone.
+  ROUND(SAFE_DIVIDE(SUM(f.tip_amount), SUM(f.fare_amount)) * 100, 2) AS avg_tip_pct_of_fare,
+  ROUND(APPROX_QUANTILES(f.tip_amount, 100)[OFFSET(50)], 2) AS median_tip_amount,
+  ROUND(AVG(f.tip_amount), 2)                             AS avg_tip_amount,
+  ROUND(AVG(f.driver_revenue), 2)                        AS avg_driver_revenue
+FROM ${ref("fact_trip")} f
+LEFT JOIN ${ref("dim_zone")} z ON f.pu_location_id = z.location_id
+WHERE f.is_card
+  AND z.borough IS NOT NULL AND z.borough NOT IN ('Unknown', 'N/A')
+GROUP BY f.pu_location_id, pu_zone, pu_borough
+HAVING card_trips >= 200
+ORDER BY avg_tip_pct_of_fare DESC

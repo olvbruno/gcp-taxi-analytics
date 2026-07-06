@@ -1,0 +1,12 @@
+config {
+  type: "assertion",
+  schema: "taxi_silver",
+  name: "assert_gold_earnings_sane",
+  description: "Fails if any published zone/hour slot has an impossible median $/occupied-hour (guards against upstream math/units breakage)."
+}
+
+-- An assertion passes when it returns ZERO rows. Any row here = a broken slot.
+SELECT pu_zone, pickup_hour, pickup_dow, median_earnings_per_hour
+FROM ${ref("zone_hour_earnings")}
+WHERE median_earnings_per_hour < 0
+   OR median_earnings_per_hour > 1000

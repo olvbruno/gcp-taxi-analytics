@@ -1,0 +1,16 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "dim_rate_code",
+  description: "RatecodeID -> label (per TLC data dictionary; 99 = undocumented/unknown).",
+}
+
+SELECT * FROM UNNEST([
+  STRUCT(1 AS rate_code_id, 'Standard rate' AS rate_code_desc),
+  STRUCT(2, 'JFK'),
+  STRUCT(3, 'Newark'),
+  STRUCT(4, 'Nassau or Westchester'),
+  STRUCT(5, 'Negotiated fare'),
+  STRUCT(6, 'Group ride'),
+  STRUCT(99, 'Unknown')
+])

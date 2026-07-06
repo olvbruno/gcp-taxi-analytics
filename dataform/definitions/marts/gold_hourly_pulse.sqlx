@@ -1,0 +1,20 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "hourly_pulse",
+  description: "The rush-hour paradox: demand vs speed vs $/hour by hour and weekday/weekend. Peak demand != peak earnings when traffic crawls."
+}
+
+SELECT
+  pickup_hour,
+  is_weekend,
+  COUNT(*) AS trips,
+  ROUND(APPROX_QUANTILES(earnings_per_hour, 100)[OFFSET(50)], 2) AS median_earnings_per_hour,
+  ROUND(APPROX_QUANTILES(driver_revenue, 100)[OFFSET(50)], 2)    AS median_driver_revenue,
+  ROUND(APPROX_QUANTILES(mph, 100)[OFFSET(50)], 1)              AS median_mph,
+  ROUND(APPROX_QUANTILES(trip_minutes, 100)[OFFSET(50)], 1)     AS median_trip_minutes,
+  ROUND(SAFE_DIVIDE(SUM(IF(is_card, tip_amount, 0)), SUM(IF(is_card, fare_amount, 0))) * 100, 1) AS avg_card_tip_pct
+FROM ${ref("fact_trip")}
+WHERE mph IS NOT NULL AND mph BETWEEN 0 AND 80
+GROUP BY pickup_hour, is_weekend
+ORDER BY is_weekend, pickup_hour

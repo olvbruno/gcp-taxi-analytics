@@ -1,0 +1,32 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "zone_hour_earnings",
+  description: "Mart: driver earnings by pickup zone x hour x day-of-week. Answers WHERE and WHEN to drive.",
+  bigquery: { clusterBy: ["pickup_hour", "pu_location_id"] }
+}
+
+SELECT
+  f.pu_location_id,
+  z.zone    AS pu_zone,
+  z.borough AS pu_borough,
+  f.pickup_hour,
+  f.pickup_dow,
+  ANY_VALUE(f.pickup_dayname) AS pickup_dayname,
+
+  COUNT(*) AS trips,
+  ROUND(APPROX_QUANTILES(f.driver_revenue, 100)[OFFSET(50)], 2)    AS median_driver_revenue,
+  ROUND(AVG(f.driver_revenue), 2)                                  AS avg_driver_revenue,
+  ROUND(APPROX_QUANTILES(f.earnings_per_hour, 100)[OFFSET(50)], 2) AS median_earnings_per_hour,
+  ROUND(AVG(f.earnings_per_hour), 2)                               AS avg_earnings_per_hour,
+  ROUND(APPROX_QUANTILES(f.trip_minutes, 100)[OFFSET(50)], 1)      AS median_trip_minutes,
+  ROUND(SAFE_DIVIDE(SUM(IF(f.is_card, f.tip_amount, 0)), SUM(IF(f.is_card, f.fare_amount, 0))) * 100, 1) AS avg_card_tip_pct,
+  ROUND(AVG(CAST(f.is_card AS INT64)) * 100, 1)                   AS card_share_pct
+FROM ${ref("fact_trip")} f
+LEFT JOIN ${ref("dim_zone")} z ON f.pu_location_id = z.location_id
+-- Exclude non-geographic pseudo-zones (264 Unknown, 265 Outside of NYC): they
+-- carry meter-artifact $/hr and can't be a real "where to drive" target.
+-- Consistent with best_slots / top_tip_zones, which apply the same filter.
+WHERE z.borough IS NOT NULL AND z.borough NOT IN ('Unknown', 'N/A')
+GROUP BY f.pu_location_id, pu_zone, pu_borough, f.pickup_hour, f.pickup_dow
+HAVING trips >= 30

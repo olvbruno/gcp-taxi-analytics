@@ -1,0 +1,16 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "dim_payment_type",
+  description: "Payment-type code -> label (per TLC data dictionary; 0 = provider 'unrecorded' batch).",
+}
+
+SELECT * FROM UNNEST([
+  STRUCT(1 AS payment_type, 'Credit card' AS payment_method),
+  STRUCT(2, 'Cash'),
+  STRUCT(3, 'No charge'),
+  STRUCT(4, 'Dispute'),
+  STRUCT(5, 'Unknown'),
+  STRUCT(6, 'Voided trip'),
+  STRUCT(0, 'Unrecorded')
+])

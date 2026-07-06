@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+project_id = "my-taxi-analytics-project"   # your GCP project id
+region     = "us-central1"                  # bucket + BQ datasets co-located here
+
+# Optional overrides:
+# raw_bucket_name    = "my-taxi-analytics-project-taxi-raw"
+# ingest_image       = "us-central1-docker.pkg.dev/my-taxi-analytics-project/taxi/ingest:latest"
+# transform_image    = "us-central1-docker.pkg.dev/my-taxi-analytics-project/taxi/transform:latest"
+# daily_schedule     = "0 9 * * *"
+# scheduler_timezone = "America/New_York"
+# source_start_month = "2023-01"

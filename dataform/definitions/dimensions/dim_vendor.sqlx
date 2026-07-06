@@ -1,0 +1,13 @@
+config {
+  type: "table",
+  schema: "taxi_gold",
+  name: "dim_vendor",
+  description: "VendorID -> technology provider name (per TLC data dictionary).",
+}
+
+SELECT * FROM UNNEST([
+  STRUCT(1 AS vendor_id, 'Creative Mobile Technologies' AS vendor_name),
+  STRUCT(2, 'Curb Mobility / VeriFone'),
+  STRUCT(6, 'Myle Technologies'),
+  STRUCT(7, 'Helix')
+])
